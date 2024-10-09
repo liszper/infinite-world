@@ -92,8 +92,6 @@ export default class CameraFly
             if(this.rotateX > this.rotateXLimits.max)
                 this.rotateX = this.rotateXLimits.max
         }
-
-        // console.log('this.rotateY', this.rotateY)
         
         // Rotation Matrix
         const rotationMatrix = mat4.create()
@@ -134,6 +132,21 @@ export default class CameraFly
             
         vec3.normalize(direction, direction)
         vec3.scale(direction, direction, speed)
-        vec3.add(this.position, this.position, direction)
+
+        // Check for terrain collision
+        const newPosition = vec3.create()
+        vec3.add(newPosition, this.position, direction)
+
+        const chunks = this.state.chunks
+        const elevation = chunks.getElevationForPosition(newPosition[0], newPosition[2])
+
+        if (elevation !== undefined) {
+            const minElevation = elevation + 1 // Add a small offset to prevent clipping
+            if (newPosition[1] < minElevation) {
+                newPosition[1] = minElevation
+            }
+        }
+
+        vec3.copy(this.position, newPosition)
     }
 }

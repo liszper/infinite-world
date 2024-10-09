@@ -24,6 +24,8 @@ export default class Controls
 
             location.reload()
         })
+
+        this.events.on('jumpDown', () => this.state.player.jump())
     }
 
     setKeys()

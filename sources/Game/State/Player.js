@@ -24,46 +24,92 @@ export default class Player
         this.position.delta = vec3.create()
 
         this.camera = new Camera(this)
+
+        this.gravity = 9.8 // Gravity acceleration (m/s^2)
+        this.verticalVelocity = 0 // Initial vertical velocity
+        this.isGrounded = false // Flag to check if the player is on the ground
     }
 
     update()
     {
-        if(this.camera.mode !== Camera.MODE_FLY && (this.controls.keys.down.forward || this.controls.keys.down.backward || this.controls.keys.down.strafeLeft || this.controls.keys.down.strafeRight))
+        if(this.camera.mode === Camera.MODE_FLY)
         {
-            this.rotation = this.camera.thirdPerson.theta
+            // Update player position to match camera position when in fly mode
+            vec3.copy(this.position.current, this.camera.fly.position)
+            this.verticalVelocity = 0 // Reset vertical velocity in fly mode
+            this.isGrounded = false
+        }
+        else
+        {
+            // Apply gravity
+            if (!this.isGrounded) {
+                this.verticalVelocity -= this.gravity * this.time.delta
+            }
 
-            if(this.controls.keys.down.forward)
+            // Calculate new position
+            const newPosition = vec3.create()
+            vec3.copy(newPosition, this.position.current)
+
+            if (this.controls.keys.down.forward || this.controls.keys.down.backward || this.controls.keys.down.strafeLeft || this.controls.keys.down.strafeRight)
             {
-                if(this.controls.keys.down.strafeLeft)
-                    this.rotation += Math.PI * 0.25
+                this.rotation = this.camera.thirdPerson.theta
+
+                if(this.controls.keys.down.forward)
+                {
+                    if(this.controls.keys.down.strafeLeft)
+                        this.rotation += Math.PI * 0.25
+                    else if(this.controls.keys.down.strafeRight)
+                        this.rotation -= Math.PI * 0.25
+                }
+                else if(this.controls.keys.down.backward)
+                {
+                    if(this.controls.keys.down.strafeLeft)
+                        this.rotation += Math.PI * 0.75
+                    else if(this.controls.keys.down.strafeRight)
+                        this.rotation -= Math.PI * 0.75
+                    else
+                        this.rotation -= Math.PI
+                }
+                else if(this.controls.keys.down.strafeLeft)
+                {
+                    this.rotation += Math.PI * 0.5
+                }
                 else if(this.controls.keys.down.strafeRight)
-                    this.rotation -= Math.PI * 0.25
-            }
-            else if(this.controls.keys.down.backward)
-            {
-                if(this.controls.keys.down.strafeLeft)
-                    this.rotation += Math.PI * 0.75
-                else if(this.controls.keys.down.strafeRight)
-                    this.rotation -= Math.PI * 0.75
-                else
-                    this.rotation -= Math.PI
-            }
-            else if(this.controls.keys.down.strafeLeft)
-            {
-                this.rotation += Math.PI * 0.5
-            }
-            else if(this.controls.keys.down.strafeRight)
-            {
-                this.rotation -= Math.PI * 0.5
+                {
+                    this.rotation -= Math.PI * 0.5
+                }
+
+                const speed = this.controls.keys.down.boost ? this.inputBoostSpeed : this.inputSpeed
+
+                const x = Math.sin(this.rotation) * this.time.delta * speed
+                const z = Math.cos(this.rotation) * this.time.delta * speed
+
+                newPosition[0] -= x
+                newPosition[2] -= z
             }
 
-            const speed = this.controls.keys.down.boost ? this.inputBoostSpeed : this.inputSpeed
+            // Apply vertical velocity
+            newPosition[1] += this.verticalVelocity * this.time.delta
 
-            const x = Math.sin(this.rotation) * this.time.delta * speed
-            const z = Math.cos(this.rotation) * this.time.delta * speed
+            // Check for terrain collision
+            const chunks = this.state.chunks
+            const elevation = chunks.getElevationForPosition(newPosition[0], newPosition[2])
 
-            this.position.current[0] -= x
-            this.position.current[2] -= z
+            if (elevation !== undefined) {
+                const minElevation = elevation + 1 // Add a small offset to prevent clipping
+                if (newPosition[1] < minElevation) {
+                    newPosition[1] = minElevation
+                    this.verticalVelocity = 0
+                    this.isGrounded = true
+                } else {
+                    this.isGrounded = false
+                }
+            } else {
+                this.isGrounded = false
+            }
+
+            // Update position
+            vec3.copy(this.position.current, newPosition)
         }
 
         vec3.sub(this.position.delta, this.position.current, this.position.previous)
@@ -74,13 +120,22 @@ export default class Player
         // Update view
         this.camera.update()
 
-        // Update elevation
-        const chunks = this.state.chunks
-        const elevation = chunks.getElevationForPosition(this.position.current[0], this.position.current[2])
+        // Update elevation (only when not in fly mode)
+        if(this.camera.mode !== Camera.MODE_FLY)
+        {
+            const chunks = this.state.chunks
+            const elevation = chunks.getElevationForPosition(this.position.current[0], this.position.current[2])
 
-        if(elevation)
-            this.position.current[1] = elevation
-        else
-            this.position.current[1] = 0
+            if(elevation !== undefined)
+                this.position.current[1] = Math.max(this.position.current[1], elevation + 1)
+        }
+    }
+
+    jump()
+    {
+        if (this.isGrounded) {
+            this.verticalVelocity = 5 // Adjust this value for desired jump height
+            this.isGrounded = false
+        }
     }
 }
